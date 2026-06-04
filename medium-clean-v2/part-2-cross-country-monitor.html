@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Cross-Country Vinted Search: Comparing 5 Markets Without Burning Sessions</title><meta name="description" content="A live Apify run comparing Nike Air Force 1 listings across five Vinted markets, with JSON input, output, cost guardrails, and limitations."><link rel="canonical" href="https://dev.to/datakaz/cross-country-vinted-search-comparing-5-markets-without-burning-sessions-h3b"><meta property="og:image" content="https://raw.githubusercontent.com/DataKazKN/vinted-smart-devto-assets/main/cover-02-cross-country-monitor-1200x630.png"></head><body><article><h1>Cross-Country Vinted Search: Comparing 5 Markets Without Burning Sessions</h1>
+<figure><img src="https://raw.githubusercontent.com/DataKazKN/vinted-smart-devto-assets/main/cover-02-cross-country-monitor-1200x630.png" alt="Cross-Country Vinted Search: Comparing 5 Markets Without Burning Sessions (2/4)"></figure>
+<p><em>Part 2/4 of a developer series about turning Vinted scraping into scheduled reseller monitoring.</em></p>
+<p>Disclosure: I built Vinted Smart Scraper on Apify. Some Apify links may use my referral code.</p>
+<p>In Part 1, I showed why a Vinted monitor should track what changes, not just what exists. This part is about a different problem:</p>
+<p><em>What happens when the same query behaves differently across countries?</em></p>
+<p>I ran this live on <strong>June 4, 2026</strong> with <a href="https://apify.com/kazkn/vinted-smart-scraper?fpr=8fp2od">Vinted Smart Scraper</a>.</p>
+<p><strong>🧨 The mistake I almost made</strong></p>
+<p>The first tempting version of this feature was simple:</p>
+<pre><code>scrape 5 countries -&gt; pick cheapest -&gt; pick most expensive -&gt; call it arbitrage</code></pre>
+<p>That looks good in a screenshot, but it is not how reselling works. A <code>nike air force 1</code> listing in France and a <code>nike air force 1</code> listing in Germany can differ by:</p>
+<ul><li><strong>Size</strong> — <strong>Why it matters:</strong> EUR 35 and EUR 45 are not the same market</li><li><strong>Condition</strong> — <strong>Why it matters:</strong> &quot;Good&quot; can hide heavy wear</li><li><strong>Photos</strong> — <strong>Why it matters:</strong> Some listings are underpriced because they look bad</li><li><strong>Seller reliability</strong> — <strong>Why it matters:</strong> A cheap item from a weak seller is not always an opportunity</li><li><strong>Shipping</strong> — <strong>Why it matters:</strong> Country spread can disappear after fees</li><li><strong>Demand</strong> — <strong>Why it matters:</strong> A high listing price does not mean buyers pay it</li></ul>
+<p>So I do <strong>not</strong> want a fake &quot;profit bot&quot;. I want a country radar:</p>
+<pre><code>Where should I spend my monitoring budget today?</code></pre>
+<p>That is the correct job for <code>CROSS_COUNTRY</code>.</p>
+<p><strong>🌍 The input</strong></p>
+<pre><code>{
+  &quot;mode&quot;: &quot;CROSS_COUNTRY&quot;,
+  &quot;query&quot;: &quot;nike air force 1&quot;,
+  &quot;countries&quot;: [&quot;fr&quot;, &quot;de&quot;, &quot;es&quot;, &quot;it&quot;, &quot;nl&quot;],
+  &quot;condition&quot;: [&quot;very_good&quot;, &quot;good&quot;],
+  &quot;priceMin&quot;: 20,
+  &quot;priceMax&quot;: 120,
+  &quot;sortBy&quot;: &quot;newest_first&quot;,
+  &quot;maxItems&quot;: 15,
+  &quot;includePhotos&quot;: false,
+  &quot;maxConcurrency&quot;: 1,
+  &quot;requestDelayMs&quot;: 500
+}</code></pre>
+<p>I intentionally kept it small:</p>
+<ul><li><strong><code>5</code> countries</strong> — <strong>Why:</strong> Current stability cap</li><li><strong><code>15</code> max items</strong> — <strong>Why:</strong> 3 items per country</li><li><strong><code>includePhotos: false</code></strong> — <strong>Why:</strong> Smaller output</li><li><strong><code>maxConcurrency: 1</code></strong> — <strong>Why:</strong> Slow but clean for a proof run</li></ul>
+<p><strong>✅ Live result</strong></p>
+<ul><li><strong>Run ID</strong> — <strong>Value:</strong> <code>55PiTkUKZneTJo8Ep</code></li><li><strong>Dataset ID</strong> — <strong>Value:</strong> <code>9I2fifqjEv9sQBmrg</code></li><li><strong>Status</strong> — <strong>Value:</strong> <code>SUCCEEDED</code></li><li><strong>Duration</strong> — <strong>Value:</strong> <code>86s</code></li><li><strong>Dataset rows emitted</strong> — <strong>Value:</strong> <code>1</code></li><li><strong>Free-tier estimated charge</strong> — <strong>Value:</strong> <code>$0.022</code></li></ul>
+<p>Why only one row? Because <code>CROSS_COUNTRY</code> emits a comparison object instead of 15 individual listing rows. That output shape is intentional. If the Actor emitted every country listing as a normal row, a small five-country radar would quickly become noisy:</p>
+<ul><li><strong>15 item rows</strong> — <strong>What you get:</strong> Raw listings from all countries | <strong>Problem:</strong> Harder to read in a webhook</li><li><strong>5 country rows</strong> — <strong>What you get:</strong> One row per market | <strong>Problem:</strong> Better, but still requires aggregation</li><li><strong>1 comparison row</strong> — <strong>What you get:</strong> Best buy/sell country + spread + table | <strong>Problem:</strong> Useful for scheduled decisions</li></ul>
+<p>For a recurring monitor, I care less about dumping every listing and more about answering:</p>
+<pre><code>Did the country spread become interesting enough to open a deeper monitor?</code></pre>
+<p><strong>📊 Output</strong></p>
+<pre><code>{
+  &quot;query&quot;: &quot;nike air force 1&quot;,
+  &quot;bestBuyCountry&quot;: &quot;fr&quot;,
+  &quot;bestSellCountry&quot;: &quot;de&quot;,
+  &quot;arbitrageSpreadPct&quot;: 47.4,
+  &quot;comparisons&quot;: [
+    {
+      &quot;country&quot;: &quot;fr&quot;,
+      &quot;avgPrice&quot;: 31.66,
+      &quot;medianPrice&quot;: 30,
+      &quot;minPrice&quot;: 25,
+      &quot;maxPrice&quot;: 39.99,
+      &quot;itemCount&quot;: 3,
+      &quot;currency&quot;: &quot;EUR&quot;
+    },
+    {
+      &quot;country&quot;: &quot;de&quot;,
+      &quot;avgPrice&quot;: 46.67,
+      &quot;medianPrice&quot;: 50,
+      &quot;minPrice&quot;: 30,
+      &quot;maxPrice&quot;: 60,
+      &quot;itemCount&quot;: 3,
+      &quot;currency&quot;: &quot;EUR&quot;
+    },
+    {
+      &quot;country&quot;: &quot;es&quot;,
+      &quot;avgPrice&quot;: 31.66,
+      &quot;medianPrice&quot;: 30,
+      &quot;minPrice&quot;: 25,
+      &quot;maxPrice&quot;: 39.99,
+      &quot;itemCount&quot;: 3,
+      &quot;currency&quot;: &quot;EUR&quot;
+    },
+    {
+      &quot;country&quot;: &quot;it&quot;,
+      &quot;avgPrice&quot;: 31.66,
+      &quot;medianPrice&quot;: 30,
+      &quot;minPrice&quot;: 25,
+      &quot;maxPrice&quot;: 39.99,
+      &quot;itemCount&quot;: 3,
+      &quot;currency&quot;: &quot;EUR&quot;
+    },
+    {
+      &quot;country&quot;: &quot;nl&quot;,
+      &quot;avgPrice&quot;: 41.67,
+      &quot;medianPrice&quot;: 30,
+      &quot;minPrice&quot;: 30,
+      &quot;maxPrice&quot;: 65,
+      &quot;itemCount&quot;: 3,
+      &quot;currency&quot;: &quot;EUR&quot;
+    }
+  ]
+}</code></pre>
+<p>Full country table from the run:</p>
+<ul><li><strong><code>fr</code></strong> — <strong>Items:</strong> 3 | <strong>Min:</strong> <code>25</code> | <strong>Median:</strong> <code>30</code> | <strong>Avg:</strong> <code>31.66</code> | <strong>Max:</strong> <code>39.99</code></li><li><strong><code>de</code></strong> — <strong>Items:</strong> 3 | <strong>Min:</strong> <code>30</code> | <strong>Median:</strong> <code>50</code> | <strong>Avg:</strong> <code>46.67</code> | <strong>Max:</strong> <code>60</code></li><li><strong><code>es</code></strong> — <strong>Items:</strong> 3 | <strong>Min:</strong> <code>25</code> | <strong>Median:</strong> <code>30</code> | <strong>Avg:</strong> <code>31.66</code> | <strong>Max:</strong> <code>39.99</code></li><li><strong><code>it</code></strong> — <strong>Items:</strong> 3 | <strong>Min:</strong> <code>25</code> | <strong>Median:</strong> <code>30</code> | <strong>Avg:</strong> <code>31.66</code> | <strong>Max:</strong> <code>39.99</code></li><li><strong><code>nl</code></strong> — <strong>Items:</strong> 3 | <strong>Min:</strong> <code>30</code> | <strong>Median:</strong> <code>30</code> | <strong>Avg:</strong> <code>41.67</code> | <strong>Max:</strong> <code>65</code></li></ul>
+<p><strong>🧪 What the run actually proved</strong></p>
+<p>The useful part is not &quot;Germany is profitable&quot;. The useful part is:</p>
+<ul><li><strong>France median was <code>30</code></strong> — <strong>What I can say:</strong> France looked cheaper in this small sample | <strong>What I cannot say:</strong> Every French AF1 listing is cheap</li><li><strong>Germany median was <code>50</code></strong> — <strong>What I can say:</strong> Germany looked higher in this sample | <strong>What I cannot say:</strong> German buyers will pay more</li><li><strong>Spread was <code>47.4%</code></strong> — <strong>What I can say:</strong> The query is worth deeper monitoring | <strong>What I cannot say:</strong> Net resale profit is <code>47.4%</code></li><li><strong>Five countries finished successfully</strong> — <strong>What I can say:</strong> The workflow handled country redirects | <strong>What I cannot say:</strong> It will always finish at the same speed</li><li><strong>One dataset row was emitted</strong> — <strong>What I can say:</strong> Schedule output is compact | <strong>What I cannot say:</strong> Internal scraping was only one request</li></ul>
+<p>This distinction matters because a reseller does not need another messy spreadsheet. They need a short list of where to look next.</p>
+<p><strong>⚙️ Why cross-country scraping is harder than it looks</strong></p>
+<p>Vinted is not one global marketplace with one clean catalog. It behaves more like a group of country-specific markets that share branding but do not always behave the same way from a scraper perspective.</p>
+<ul><li><strong>Country redirects</strong> — <strong>Practical effect:</strong> A request can land on the wrong country if session handling is weak</li><li><strong>Different localized pages</strong> — <strong>Practical effect:</strong> The same query can expose slightly different metadata</li><li><strong>Anti-bot variance</strong> — <strong>Practical effect:</strong> One country can be easy while another slows the whole run</li><li><strong>Ranking drift</strong> — <strong>Practical effect:</strong> <code>newest_first</code> today is not the same as tomorrow</li><li><strong>Result caps</strong> — <strong>Practical effect:</strong> A high <code>maxItems</code> across countries can multiply quickly</li><li><strong>Currency/fees/shipping</strong> — <strong>Practical effect:</strong> EUR price comparison is only the first layer</li></ul>
+<p>That is why I kept this test at:</p>
+<pre><code>5 countries
+3 items per country
+1 emitted comparison row
+86 seconds total</code></pre>
+<p>It is not the maximum possible configuration. It is a clean proof that the workflow can survive a small scheduled country radar.</p>
+<p><strong>✅ What this is good for</strong></p>
+<ul><li><strong>Quick market spread check</strong> — <strong>Good fit?:</strong> ✅</li><li><strong>Comparing the same query across countries</strong> — <strong>Good fit?:</strong> ✅</li><li><strong>Building a shortlist of countries to monitor daily</strong> — <strong>Good fit?:</strong> ✅</li><li><strong>Proving actual resale profit</strong> — <strong>Good fit?:</strong> ❌</li><li><strong>Replacing human judgment</strong> — <strong>Good fit?:</strong> ❌</li></ul>
+<p>The output says:</p>
+<pre><code>Best buy country: fr
+Best sell country: de
+Spread: 47.4%</code></pre>
+<p>That is not a profit guarantee. It is a signal that this query may be worth monitoring more carefully.</p>
+<p><strong>⚠️ The hidden trap</strong></p>
+<p>The dangerous version of this feature would be:</p>
+<p><em>&quot;Here is a profitable arbitrage gap.&quot;</em></p>
+<p>That would be sloppy. The safer version is:</p>
+<p><em>&quot;Here is a price spread from a small sample. Validate shipping, sizes, condition, fees, and actual sell-through before trusting it.&quot;</em></p>
+<ul><li><strong>Country-level price spread</strong> — <strong>Still missing:</strong> Shipping and buyer behavior</li><li><strong>Median/min/max</strong> — <strong>Still missing:</strong> Listing quality</li><li><strong>5-country snapshot</strong> — <strong>Still missing:</strong> Time-series confidence</li><li><strong>Query-level comparison</strong> — <strong>Still missing:</strong> Exact product matching</li></ul>
+<p><strong>🧭 The decision loop I would use</strong></p>
+<p>I would not schedule <code>CROSS_COUNTRY</code> as the final monitor. I would use it as step one:</p>
+<pre><code>cross-country radar -&gt; pick promising country -&gt; sell-through tracker -&gt; exact item watchlist</code></pre>
+<p>Example:</p>
+<ul><li><strong>1</strong> — <strong>Mode:</strong> <code>CROSS_COUNTRY</code> | <strong>Goal:</strong> Find which markets are unusually cheap/expensive</li><li><strong>2</strong> — <strong>Mode:</strong> <code>SELL_THROUGH_TRACKER</code> | <strong>Goal:</strong> Check if inventory actually disappears</li><li><strong>3</strong> — <strong>Mode:</strong> <code>PRICE_TRACK</code> | <strong>Goal:</strong> Watch exact URLs that are close to a buy decision</li><li><strong>4</strong> — <strong>Mode:</strong> Webhook/Telegram/CSV | <strong>Goal:</strong> Push only useful signals</li></ul>
+<p>The important part is that every step narrows the search space. That is how you avoid turning a reseller tool into a bill generator.</p>
+<p><strong>🔁 Schedule templates</strong></p>
+<p>Small daily country radar:</p>
+<pre><code>{
+  &quot;mode&quot;: &quot;CROSS_COUNTRY&quot;,
+  &quot;query&quot;: &quot;nike air force 1&quot;,
+  &quot;countries&quot;: [&quot;fr&quot;, &quot;de&quot;, &quot;es&quot;, &quot;it&quot;, &quot;nl&quot;],
+  &quot;condition&quot;: [&quot;very_good&quot;, &quot;good&quot;],
+  &quot;priceMin&quot;: 20,
+  &quot;priceMax&quot;: 120,
+  &quot;sortBy&quot;: &quot;newest_first&quot;,
+  &quot;maxItems&quot;: 100,
+  &quot;includePhotos&quot;: false,
+  &quot;maxConcurrency&quot;: 1,
+  &quot;requestDelayMs&quot;: 500
+}</code></pre>
+<p>Weekly wider radar:</p>
+<pre><code>{
+  &quot;mode&quot;: &quot;CROSS_COUNTRY&quot;,
+  &quot;query&quot;: &quot;adidas spezial&quot;,
+  &quot;countries&quot;: [&quot;fr&quot;, &quot;de&quot;, &quot;es&quot;, &quot;it&quot;, &quot;nl&quot;],
+  &quot;condition&quot;: [&quot;new_with_tags&quot;, &quot;very_good&quot;, &quot;good&quot;],
+  &quot;priceMin&quot;: 15,
+  &quot;priceMax&quot;: 150,
+  &quot;sortBy&quot;: &quot;newest_first&quot;,
+  &quot;maxItems&quot;: 300,
+  &quot;includePhotos&quot;: false
+}</code></pre>
+<p>Handoff to sell-through when a country keeps showing spreads:</p>
+<pre><code>{
+  &quot;mode&quot;: &quot;SELL_THROUGH_TRACKER&quot;,
+  &quot;query&quot;: &quot;nike air force 1&quot;,
+  &quot;countries&quot;: [&quot;fr&quot;],
+  &quot;maxItems&quot;: 100,
+  &quot;trackingStoreName&quot;: &quot;daily-af1-fr-after-cross-country&quot;,
+  &quot;trackerId&quot;: &quot;daily-af1-fr-after-cross-country&quot;,
+  &quot;emitRunSummary&quot;: true,
+  &quot;emitActiveItems&quot;: true
+}</code></pre>
+<p><strong>💸 Cost guardrail</strong></p>
+<p>The live proof run emitted <code>1</code> row. At the Free pricing available when I ran the test:</p>
+<pre><code>$0.020 / Actor start
+$0.002 / result row</code></pre>
+<p>That makes the live run roughly:</p>
+<pre><code>$0.020 + (1 * $0.002) = $0.022</code></pre>
+<p>Important nuance:</p>
+<pre><code>maxItems controls how much the Actor is allowed to inspect
+dataset rows control the result-row charge</code></pre>
+<p>So a compact comparison output is useful for schedules, but you still need sane <code>maxItems</code> and country caps. My default:</p>
+<ul><li><strong>First manual test</strong> — <strong>Suggested cap:</strong> <code>15</code> | <strong>Why:</strong> Fast proof</li><li><strong>Daily radar</strong> — <strong>Suggested cap:</strong> <code>100</code> | <strong>Why:</strong> Enough signal, still controlled</li><li><strong>Weekly scan</strong> — <strong>Suggested cap:</strong> <code>300</code> | <strong>Why:</strong> Wider sample without making it permanent</li><li><strong>Always-on high frequency</strong> — <strong>Suggested cap:</strong> Avoid | <strong>Why:</strong> Use sell-through or exact watchlists instead</li></ul>
+<p><strong>🔁 How I would schedule it</strong></p>
+<p>Use this weekly or daily:</p>
+<pre><code>{
+  &quot;mode&quot;: &quot;CROSS_COUNTRY&quot;,
+  &quot;query&quot;: &quot;nike air force 1&quot;,
+  &quot;countries&quot;: [&quot;fr&quot;, &quot;de&quot;, &quot;es&quot;, &quot;it&quot;, &quot;nl&quot;],
+  &quot;maxItems&quot;: 100,
+  &quot;sortBy&quot;: &quot;newest_first&quot;
+}</code></pre>
+<p>Then use <code>SELL_THROUGH_TRACKER</code> for the countries that repeatedly look interesting. My rule:</p>
+<pre><code>CROSS_COUNTRY = find where to look
+SELL_THROUGH_TRACKER = learn what moves
+PRICE_TRACK = watch exact item URLs</code></pre>
+<p><strong>🔔 Webhook payload I would actually send</strong></p>
+<p>If I schedule this every day, I do not want the full dataset in Telegram. I want a compact message:</p>
+<pre><code>{
+  &quot;workflow&quot;: &quot;vinted-cross-country-radar&quot;,
+  &quot;query&quot;: &quot;nike air force 1&quot;,
+  &quot;bestBuyCountry&quot;: &quot;fr&quot;,
+  &quot;bestSellCountry&quot;: &quot;de&quot;,
+  &quot;arbitrageSpreadPct&quot;: 47.4,
+  &quot;sampleSize&quot;: {
+    &quot;fr&quot;: 3,
+    &quot;de&quot;: 3,
+    &quot;es&quot;: 3,
+    &quot;it&quot;: 3,
+    &quot;nl&quot;: 3
+  },
+  &quot;action&quot;: &quot;open-sell-through-tracker-for-fr&quot;
+}</code></pre>
+<p>That is the difference between scraping and monitoring. Scraping gives you rows. Monitoring tells you what to do next.</p>
+<p><strong>🚀 Try it</strong></p>
+<p>Run the Actor here:</p>
+<p>https://apify.com/kazkn/vinted-smart-scraper?fpr=8fp2od Start with <code>maxItems: 100</code>. If the comparison is useful, save it as an Apify Task and schedule it.</p>
+<p><strong>Read the full series</strong></p><ul><li><a href="https://dev.to/datakaz/i-built-a-vinted-monitor-that-tracks-what-disappears-not-just-what-exists-4862">Part 1: Sell-through monitor</a></li><li><a href="https://dev.to/datakaz/cross-country-vinted-search-comparing-5-markets-without-burning-sessions-h3b">Part 2: Cross-country Vinted search</a></li><li><a href="https://dev.to/datakaz/seller-watchlists-price-drops-and-webhooks-the-vinted-signals-i-actually-schedule-1nag">Part 3: Seller watchlists and webhooks</a></li><li><a href="https://dev.to/datakaz/best-vinted-scraper-in-2026-an-honest-developer-comparison-5921">Part 4: Honest scraper comparison</a></li></ul>
+<p><em>Originally published at <a href="https://dev.to/datakaz/cross-country-vinted-search-comparing-5-markets-without-burning-sessions-h3b">DEV.to</a>.</em></p></article></body></html>

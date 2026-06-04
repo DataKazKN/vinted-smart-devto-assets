@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>I Built a Vinted Monitor That Tracks What Disappears, Not Just What Exists</title><meta name="description" content="Turning one-time Vinted searches into scheduled sell-through tracking with Apify Tasks, JSON inputs, real run data, and cost guardrails."><link rel="canonical" href="https://dev.to/datakaz/i-built-a-vinted-monitor-that-tracks-what-disappears-not-just-what-exists-4862"><meta property="og:image" content="https://raw.githubusercontent.com/DataKazKN/vinted-smart-devto-assets/main/cover-01-sell-through-monitor-1200x630.png"></head><body><article><h1>I Built a Vinted Monitor That Tracks What Disappears, Not Just What Exists</h1>
+<figure><img src="https://raw.githubusercontent.com/DataKazKN/vinted-smart-devto-assets/main/cover-01-sell-through-monitor-1200x630.png" alt="I Built a Vinted Monitor That Tracks What Disappears, Not Just What Exists (1/4)"></figure>
+<p><em>Part 1/4 of a developer series about turning Vinted scraping into scheduled reseller monitoring.</em></p>
+<p>Disclosure: I built Vinted Smart Scraper on Apify. Some Apify links may use my referral code.</p>
+<p>A normal Vinted search tells you what exists <strong>right now</strong>. A reseller usually needs the opposite:</p>
+<p><em>What changed since yesterday?</em></p>
+<p>That sounds like a small difference, but it changes the whole scraper design.</p>
+<p>One-off exports are easy. Scheduled market monitoring is not. You need stable inputs, a persistent state store, clean diffs, cost caps, and a way to avoid calling every missing item &quot;sold&quot; when Vinted simply changed ranking or hid a page. I ran this live on Apify on <strong>June 4, 2026</strong> with <a href="https://apify.com/kazkn/vinted-smart-scraper?fpr=8fp2od">Vinted Smart Scraper</a>.</p>
+<p><strong>📊 The live baseline</strong></p>
+<p>Before changing the article, I pulled the real public Store and run data.</p>
+<ul><li><strong>Actor</strong> — <strong>Value:</strong> <code>kazkn/vinted-smart-scraper</code></li><li><strong>Actor ID</strong> — <strong>Value:</strong> <code>4UAPrwZb1XOlkCJKK</code></li><li><strong>Supported Vinted markets</strong> — <strong>Value:</strong> <code>26</code></li><li><strong>Countries per run cap</strong> — <strong>Value:</strong> <code>5</code></li><li><strong>Total public runs</strong> — <strong>Value:</strong> <code>108,367</code></li><li><strong>Total users</strong> — <strong>Value:</strong> <code>464</code></li><li><strong>Users, 7 days</strong> — <strong>Value:</strong> <code>31</code></li><li><strong>Users, 30 days</strong> — <strong>Value:</strong> <code>97</code></li><li><strong>Runs, 30 days</strong> — <strong>Value:</strong> <code>7,392</code></li><li><strong>Succeeded runs, 30 days</strong> — <strong>Value:</strong> <code>7,166</code></li><li><strong>Rating</strong> — <strong>Value:</strong> <code>5.0 / 5</code></li><li><strong>Reviews</strong> — <strong>Value:</strong> <code>4</code></li></ul>
+<p>Current Free-tier event pricing at the time of the test:</p>
+<pre><code>$0.020 per Actor start
+$0.002 per dataset result</code></pre>
+<p>So the billing guardrail is simple:</p>
+<pre><code>estimated charge = actor start + emitted rows * result price</code></pre>
+<p><strong>❌ The wrong abstraction</strong></p>
+<p>My first mistake was thinking like this:</p>
+<p><em>&quot;Users need a Vinted scraper.&quot;</em></p>
+<p>That is too broad. Resellers do not only need raw listings. They need a repeatable signal.</p>
+<ul><li><strong>Export one CSV</strong> — <strong>✅ Market monitor:</strong> Run the same input every day</li><li><strong>Count active listings</strong> — <strong>✅ Market monitor:</strong> Compare snapshots</li><li><strong>Trust hidden sold pages</strong> — <strong>✅ Market monitor:</strong> Track <code>missing</code>, <code>likely_sold</code>, <code>reappeared</code></li><li><strong>Pull everything</strong> — <strong>✅ Market monitor:</strong> Cap rows with <code>maxItems</code></li><li><strong>Pay for noisy rows</strong> — <strong>✅ Market monitor:</strong> Emit only changes after baseline</li><li><strong>Debug manually</strong> — <strong>✅ Market monitor:</strong> Send summary rows to CSV/API/webhook</li></ul>
+<p>That is why the most important mode is not the normal <code>SEARCH</code>. It is <code>SELL_THROUGH_TRACKER</code>.</p>
+<p><strong>🧪 Run 1: normal search</strong></p>
+<p>I started with a tiny real search:</p>
+<pre><code>{
+  &quot;mode&quot;: &quot;SEARCH&quot;,
+  &quot;query&quot;: &quot;nike air force 1&quot;,
+  &quot;countries&quot;: [&quot;fr&quot;],
+  &quot;condition&quot;: [&quot;very_good&quot;, &quot;good&quot;],
+  &quot;priceMin&quot;: 20,
+  &quot;priceMax&quot;: 120,
+  &quot;sortBy&quot;: &quot;newest_first&quot;,
+  &quot;maxItems&quot;: 8,
+  &quot;includePhotos&quot;: false,
+  &quot;includeSellerDetails&quot;: false
+}</code></pre>
+<p>Result:</p>
+<ul><li><strong>Run ID</strong> — <strong>Value:</strong> <code>7BHS0mBNeN4faoDZk</code></li><li><strong>Dataset ID</strong> — <strong>Value:</strong> <code>DQGMfYNvIQabnV2wF</code></li><li><strong>Status</strong> — <strong>Value:</strong> <code>SUCCEEDED</code></li><li><strong>Duration</strong> — <strong>Value:</strong> <code>10s</code></li><li><strong>Rows emitted</strong> — <strong>Value:</strong> <code>8</code></li><li><strong>Total available in Vinted response</strong> — <strong>Value:</strong> <code>960</code></li><li><strong>Free-tier estimated charge</strong> — <strong>Value:</strong> <code>$0.036</code></li></ul>
+<p>Sample output:</p>
+<pre><code>{
+  &quot;id&quot;: 9089776821,
+  &quot;title&quot;: &quot;Nike air force 1 shadow unisex numero 45&quot;,
+  &quot;url&quot;: &quot;https://www.vinted.fr/items/9089776821-nike-air-force-1-shadow-unisex-numero-45&quot;,
+  &quot;price&quot;: 30,
+  &quot;currency&quot;: &quot;EUR&quot;,
+  &quot;brand&quot;: &quot;Air Force&quot;,
+  &quot;size&quot;: &quot;45&quot;,
+  &quot;condition&quot;: &quot;Bon état&quot;,
+  &quot;country&quot;: &quot;fr&quot;,
+  &quot;seller&quot;: {
+    &quot;id&quot;: 3160438769,
+    &quot;username&quot;: &quot;eeeeeeed1&quot;
+  }
+}</code></pre>
+<p>That is useful, but it is still just a snapshot. The more interesting question is:</p>
+<p><em>What happens if I run the same thing again?</em></p>
+<p><strong>✅ Run 2: build a sell-through baseline</strong></p>
+<p>Here is the baseline input:</p>
+<pre><code>{
+  &quot;mode&quot;: &quot;SELL_THROUGH_TRACKER&quot;,
+  &quot;query&quot;: &quot;nike air force 1&quot;,
+  &quot;countries&quot;: [&quot;fr&quot;],
+  &quot;condition&quot;: [&quot;very_good&quot;, &quot;good&quot;],
+  &quot;priceMin&quot;: 20,
+  &quot;priceMax&quot;: 120,
+  &quot;sortBy&quot;: &quot;newest_first&quot;,
+  &quot;maxItems&quot;: 8,
+  &quot;trackingStoreName&quot;: &quot;devto-series-sell-through-2026-06-04&quot;,
+  &quot;trackerId&quot;: &quot;devto-nike-air-force-fr-2026-06-04&quot;,
+  &quot;missingRunsThreshold&quot;: 2,
+  &quot;emitActiveItems&quot;: true,
+  &quot;emitRunSummary&quot;: true
+}</code></pre>
+<p>The important fields:</p>
+<ul><li><strong><code>trackingStoreName</code></strong> — <strong>Why it matters:</strong> Keeps state across scheduled runs</li><li><strong><code>trackerId</code></strong> — <strong>Why it matters:</strong> Stable ID for this monitor</li><li><strong><code>missingRunsThreshold</code></strong> — <strong>Why it matters:</strong> Reduces false sold signals</li><li><strong><code>emitActiveItems</code></strong> — <strong>Why it matters:</strong> Full baseline first, lighter output later</li><li><strong><code>emitRunSummary</code></strong> — <strong>Why it matters:</strong> Adds one daily summary row for automations</li></ul>
+<p>Live result:</p>
+<ul><li><strong>Run ID</strong> — <strong>Value:</strong> <code>gCd8a3kk4AC9yJWpI</code></li><li><strong>Dataset ID</strong> — <strong>Value:</strong> <code>0QbscZ6GRdhmOlSqx</code></li><li><strong>Status</strong> — <strong>Value:</strong> <code>SUCCEEDED</code></li><li><strong>Duration</strong> — <strong>Value:</strong> <code>6s</code></li><li><strong>Rows emitted</strong> — <strong>Value:</strong> <code>9</code></li><li><strong>Item rows</strong> — <strong>Value:</strong> <code>8</code></li><li><strong>Summary rows</strong> — <strong>Value:</strong> <code>1</code></li><li><strong>Free-tier estimated charge</strong> — <strong>Value:</strong> <code>$0.038</code></li></ul>
+<p>The summary row is what turns the Actor into a daily monitor:</p>
+<pre><code>{
+  &quot;recordType&quot;: &quot;SELL_THROUGH_DAILY_SUMMARY&quot;,
+  &quot;trackerId&quot;: &quot;devto-nike-air-force-fr-2026-06-04&quot;,
+  &quot;isBaseline&quot;: true,
+  &quot;scheduleReady&quot;: true,
+  &quot;observedItems&quot;: 8,
+  &quot;outputItemRecords&quot;: 8,
+  &quot;totalTrackedItems&quot;: 8,
+  &quot;newItems&quot;: 8,
+  &quot;activeItems&quot;: 8,
+  &quot;missingItems&quot;: 0,
+  &quot;likelySoldItems&quot;: 0,
+  &quot;explicitSoldItems&quot;: 0,
+  &quot;sellThroughRate&quot;: 0,
+  &quot;avgPrice&quot;: 35,
+  &quot;topBrands&quot;: [
+    { &quot;brand&quot;: &quot;Air Force&quot;, &quot;count&quot;: 5 },
+    { &quot;brand&quot;: &quot;Nike&quot;, &quot;count&quot;: 3 }
+  ]
+}</code></pre>
+<p>The baseline does not prove anything sold yet. It creates the memory needed for the next run.</p>
+<p><strong>🔁 Run 3: same tracker, lighter scheduled output</strong></p>
+<p>For the second run, I kept the same <code>trackingStoreName</code> and <code>trackerId</code>, but changed one thing:</p>
+<pre><code>{
+  &quot;emitActiveItems&quot;: false
+}</code></pre>
+<p>Full input:</p>
+<pre><code>{
+  &quot;mode&quot;: &quot;SELL_THROUGH_TRACKER&quot;,
+  &quot;query&quot;: &quot;nike air force 1&quot;,
+  &quot;countries&quot;: [&quot;fr&quot;],
+  &quot;condition&quot;: [&quot;very_good&quot;, &quot;good&quot;],
+  &quot;priceMin&quot;: 20,
+  &quot;priceMax&quot;: 120,
+  &quot;sortBy&quot;: &quot;newest_first&quot;,
+  &quot;maxItems&quot;: 8,
+  &quot;trackingStoreName&quot;: &quot;devto-series-sell-through-2026-06-04&quot;,
+  &quot;trackerId&quot;: &quot;devto-nike-air-force-fr-2026-06-04&quot;,
+  &quot;missingRunsThreshold&quot;: 2,
+  &quot;emitActiveItems&quot;: false,
+  &quot;emitRunSummary&quot;: true
+}</code></pre>
+<p>Live result:</p>
+<ul><li><strong>Run ID</strong> — <strong>Value:</strong> <code>sbCksMapWGd5GBG9O</code></li><li><strong>Dataset ID</strong> — <strong>Value:</strong> <code>55gRHqbUbiqnmT6O3</code></li><li><strong>Status</strong> — <strong>Value:</strong> <code>SUCCEEDED</code></li><li><strong>Duration</strong> — <strong>Value:</strong> <code>5s</code></li><li><strong>Rows emitted</strong> — <strong>Value:</strong> <code>2</code></li><li><strong>Item rows</strong> — <strong>Value:</strong> <code>1</code></li><li><strong>Summary rows</strong> — <strong>Value:</strong> <code>1</code></li><li><strong>Free-tier estimated charge</strong> — <strong>Value:</strong> <code>$0.024</code></li></ul>
+<p>That second run found:</p>
+<pre><code>{
+  &quot;recordType&quot;: &quot;SELL_THROUGH_DAILY_SUMMARY&quot;,
+  &quot;isBaseline&quot;: false,
+  &quot;observedItems&quot;: 8,
+  &quot;outputItemRecords&quot;: 1,
+  &quot;totalTrackedItems&quot;: 9,
+  &quot;newItems&quot;: 1,
+  &quot;activeItems&quot;: 8,
+  &quot;missingItems&quot;: 1,
+  &quot;likelySoldItems&quot;: 0,
+  &quot;explicitSoldItems&quot;: 0,
+  &quot;newlyMissingItems&quot;: 1,
+  &quot;dailySellThroughSignals&quot;: 0,
+  &quot;avgPrice&quot;: 34.38
+}</code></pre>
+<p>One item was not observed on the second run:</p>
+<pre><code>{
+  &quot;recordType&quot;: &quot;SELL_THROUGH_ITEM&quot;,
+  &quot;itemId&quot;: 9089774198,
+  &quot;title&quot;: &quot;Nike Air Pegasus Volt Green Neon - EUR42 - HQ5403-700&quot;,
+  &quot;trackingStatus&quot;: &quot;missing&quot;,
+  &quot;changeType&quot;: &quot;missing&quot;,
+  &quot;confidence&quot;: &quot;low&quot;,
+  &quot;lastSeenPrice&quot;: 39.99,
+  &quot;missingRuns&quot;: 1,
+  &quot;missingRunsThreshold&quot;: 2
+}</code></pre>
+<p>Notice the important part:</p>
+<pre><code>missingRuns: 1
+missingRunsThreshold: 2
+confidence: low
+likelySoldItems: 0</code></pre>
+<p>The Actor did <strong>not</strong> call this sold after one missing run. That is intentional.</p>
+<p><strong>🧠 Why I do not trust sold pages blindly</strong></p>
+<p>I also ran <code>SOLD_ITEMS</code> on the same query:</p>
+<pre><code>{
+  &quot;mode&quot;: &quot;SOLD_ITEMS&quot;,
+  &quot;query&quot;: &quot;nike air force 1&quot;,
+  &quot;countries&quot;: [&quot;fr&quot;],
+  &quot;maxItems&quot;: 5
+}</code></pre>
+<p>Live result:</p>
+<ul><li><strong>Run ID</strong> — <strong>Value:</strong> <code>wvFbmO0HscQits0UV</code></li><li><strong>Status</strong> — <strong>Value:</strong> <code>SUCCEEDED</code></li><li><strong>Rows emitted</strong> — <strong>Value:</strong> <code>0</code></li><li><strong>Free-tier estimated charge</strong> — <strong>Value:</strong> <code>$0.020</code></li></ul>
+<p>The log showed the reason:</p>
+<pre><code>Sold-items endpoint variants returned active listings only.
+Returning no rows instead of false sold items.</code></pre>
+<p>That is exactly the kind of boring defensive behavior I want.</p>
+<ul><li><strong>Vinted returns active listings from a sold endpoint</strong> — <strong>Bad scraper behavior:</strong> ❌ Mark active items as sold | <strong>Safer behavior:</strong> ✅ Return zero rows</li><li><strong>Item disappears for one run</strong> — <strong>Bad scraper behavior:</strong> ❌ Claim it sold | <strong>Safer behavior:</strong> ✅ Mark <code>missing</code>, low confidence</li><li><strong>Item stays missing across runs</strong> — <strong>Bad scraper behavior:</strong> ✅ Increase confidence | <strong>Safer behavior:</strong> ✅ Use <code>missingRunsThreshold</code></li></ul>
+<p><strong>🖼️ Snapshot diff visual</strong></p>
+<p>!<a href="https://raw.githubusercontent.com/DataKazKN/vinted-smart-devto-assets/main/inside-snapshot-diff-1200x630.png">Snapshot diff workflow</a> The mental model is:</p>
+<pre><code>baseline snapshot
+       ↓
+scheduled snapshot
+       ↓
+diff engine
+       ↓
+daily summary row + item-level changes</code></pre>
+<p>For a webhook or Telegram bot, the useful object is not every listing. It is the summary:</p>
+<pre><code>{
+  &quot;telegramText&quot;: &quot;Vinted sell-through devto-nike-air-force-fr-2026-06-04: 8 observed, 1 first seen, likely sold: 0, sold: 0, reappeared: 0.&quot;
+}</code></pre>
+<p><strong>💸 Cost guardrails</strong></p>
+<p>With current Free-tier event pricing:</p>
+<pre><code>start = $0.020
+row = $0.002</code></pre>
+<p>The test charges would be:</p>
+<ul><li><strong>Search snapshot</strong> — <strong>Rows:</strong> 8 | <strong>Estimated Free-tier charge:</strong> <code>$0.036</code></li><li><strong>Sell-through baseline</strong> — <strong>Rows:</strong> 9 | <strong>Estimated Free-tier charge:</strong> <code>$0.038</code></li><li><strong>Scheduled second pass</strong> — <strong>Rows:</strong> 2 | <strong>Estimated Free-tier charge:</strong> <code>$0.024</code></li><li><strong>Sold explicit check</strong> — <strong>Rows:</strong> 0 | <strong>Estimated Free-tier charge:</strong> <code>$0.020</code></li></ul>
+<p>The practical rule:</p>
+<ul><li><strong>Inspect all current inventory</strong> — <strong>First run:</strong> ✅ <code>emitActiveItems: true</code> | <strong>Scheduled run:</strong> ❌ usually too noisy</li><li><strong>Daily changes only</strong> — <strong>First run:</strong> ❌ not enough baseline | <strong>Scheduled run:</strong> ✅ <code>emitActiveItems: false</code></li><li><strong>Webhook / Telegram</strong> — <strong>First run:</strong> ✅ keep <code>emitRunSummary: true</code> | <strong>Scheduled run:</strong> ✅ keep <code>emitRunSummary: true</code></li></ul>
+<p>Start with <code>maxItems: 100</code>. Only move to <code>300</code> after one run proves the query is useful.</p>
+<p><strong>⚠️ Limits</strong></p>
+<p>This is not magic.</p>
+<ul><li><strong>&quot;Missing means sold&quot;</strong> — <strong>Reality:</strong> ❌ No. Missing can mean hidden, removed, reranked, moderated, or sold.</li><li><strong>&quot;Sold pages are always reliable&quot;</strong> — <strong>Reality:</strong> ❌ Not in my tests. Some endpoint variants returned active listings.</li><li><strong>&quot;More countries is always better&quot;</strong> — <strong>Reality:</strong> ❌ Current cap is 5 countries per run for stability.</li><li><strong>&quot;Schedule everything hourly&quot;</strong> — <strong>Reality:</strong> ❌ You pay per start and per emitted row. Start daily.</li><li><strong>&quot;This guarantees profit&quot;</strong> — <strong>Reality:</strong> ❌ It only gives better market data.</li></ul>
+<p><strong>🚀 Try the exact monitor</strong></p>
+<p>Open <a href="https://apify.com/kazkn/vinted-smart-scraper?fpr=8fp2od">Vinted Smart Scraper on Apify</a>. Use this first:</p>
+<pre><code>{
+  &quot;mode&quot;: &quot;SELL_THROUGH_TRACKER&quot;,
+  &quot;query&quot;: &quot;nike air force 1&quot;,
+  &quot;countries&quot;: [&quot;fr&quot;],
+  &quot;maxItems&quot;: 100,
+  &quot;trackingStoreName&quot;: &quot;daily-nike-air-force-fr&quot;,
+  &quot;trackerId&quot;: &quot;daily-nike-air-force-fr&quot;,
+  &quot;missingRunsThreshold&quot;: 2,
+  &quot;emitActiveItems&quot;: true,
+  &quot;emitRunSummary&quot;: true
+}</code></pre>
+<p>Run it once. Then save it as an Apify Task, add a Schedule, and switch:</p>
+<pre><code>{
+  &quot;emitActiveItems&quot;: false
+}</code></pre>
+<p>That is the difference between scraping Vinted once and monitoring a resale market every day.</p>
+<p><strong>📚 Series</strong></p>
+<p>This is Part 1 of <strong>Vinted Smart Scraper - Market Monitor</strong>. Next:</p>
+<ul><li>Part 2: Cross-Country Vinted Search: Comparing 5 Markets Without Burning Sessions</li><li>Part 3: Seller Watchlists, Price Drops, and Webhooks: The Vinted Signals I Actually Schedule</li><li>Part 4: Best Vinted Scraper in 2026: An Honest Developer Comparison</li></ul>
+<p><strong>Read the full series</strong></p><ul><li><a href="https://dev.to/datakaz/i-built-a-vinted-monitor-that-tracks-what-disappears-not-just-what-exists-4862">Part 1: Sell-through monitor</a></li><li><a href="https://dev.to/datakaz/cross-country-vinted-search-comparing-5-markets-without-burning-sessions-h3b">Part 2: Cross-country Vinted search</a></li><li><a href="https://dev.to/datakaz/seller-watchlists-price-drops-and-webhooks-the-vinted-signals-i-actually-schedule-1nag">Part 3: Seller watchlists and webhooks</a></li><li><a href="https://dev.to/datakaz/best-vinted-scraper-in-2026-an-honest-developer-comparison-5921">Part 4: Honest scraper comparison</a></li></ul>
+<p><em>Originally published at <a href="https://dev.to/datakaz/i-built-a-vinted-monitor-that-tracks-what-disappears-not-just-what-exists-4862">DEV.to</a>.</em></p></article></body></html>
