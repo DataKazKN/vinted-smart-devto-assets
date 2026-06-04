@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seller Watchlists, Price Drops, and Webhooks: The Vinted Signals I Actually Schedule</title>
+<meta name="description" content="Live Vinted Smart Scraper runs for seller profile monitoring and persistent price tracking, including a real 403 fallback case.">
+<link rel="canonical" href="https://dev.to/datakaz/seller-watchlists-price-drops-and-webhooks-the-vinted-signals-i-actually-schedule-1nag">
+<meta property="og:title" content="Seller Watchlists, Price Drops, and Webhooks: The Vinted Signals I Actually Schedule">
+<meta property="og:description" content="Live Vinted Smart Scraper runs for seller profile monitoring and persistent price tracking, including a real 403 fallback case.">
+<meta property="og:image" content="https://raw.githubusercontent.com/DataKazKN/vinted-smart-devto-assets/main/cover-03-seller-price-webhooks-1200x630.png">
+</head>
+<body>
+<article>
+<h1>Seller Watchlists, Price Drops, and Webhooks: The Vinted Signals I Actually Schedule</h1>
+<figure><img src="https://raw.githubusercontent.com/DataKazKN/vinted-smart-devto-assets/main/cover-03-seller-price-webhooks-1200x630.png" alt="Seller Watchlists, Price Drops, and Webhooks: The Vinted Signals I Actually Schedule (3/4)"></figure>
+<p><em>Part 3/4 of a developer series about turning Vinted scraping into scheduled reseller monitoring.</em></p>
+<p>Disclosure: I built Vinted Smart Scraper on Apify. Some Apify links may use my referral code.</p>
+<p>After testing sell-through and country comparison, I wanted to check two smaller signals: 1. Seller profiles. 2. Exact listing price history. Both are useful, but they are not equal. Seller profiles are good for watchlists. Price tracking is good for exact item URLs.</p>
+<p>I ran both live on <strong>June 4, 2026</strong> with <a href="https://apify.com/kazkn/vinted-smart-scraper?fpr=8fp2od">Vinted Smart Scraper</a>.</p>
+<h2>🧠 Why these signals matter</h2>
+<p>Most Vinted automation starts with a broad search:</p>
+<pre><code>query -&gt; results -&gt; CSV</code></pre>
+<p>That is useful once. But resellers eventually ask more specific questions:</p>
+<pre><code>Is this seller consistently interesting?
+Did this exact item drop?
+Did this watched item disappear?
+Should I get alerted now or ignore it?</code></pre>
+<p>Those are not the same job. That is why this part is about smaller signals. They do not look as impressive as a big export, but they are the signals that make a scheduled workflow useful.</p>
+<h2>🧩 Seller profile is not item monitoring</h2>
+<p>Before the live run, I separated the workflows:</p>
+<ul>
+<li><strong>Seller watchlist</strong> — <span><strong>Best signal:</strong> Seller activity and profile stats</span> | <span><strong>Bad use:</strong> Exact price drops</span></li>
+<li><strong>Price tracking</strong> — <span><strong>Best signal:</strong> Exact item URL history</span> | <span><strong>Bad use:</strong> Discovering new items</span></li>
+<li><strong>Sell-through tracker</strong> — <span><strong>Best signal:</strong> Query/listing disappearance</span> | <span><strong>Bad use:</strong> Seller reputation</span></li>
+<li><strong>Sold-items page</strong> — <span><strong>Best signal:</strong> Explicit sold evidence when available</span> | <span><strong>Bad use:</strong> Assuming every missing item is sold</span></li>
+</ul>
+<p>This matters because a single &quot;Vinted monitor&quot; can easily become confusing. The user should know what each mode is answering.</p>
+<h2>👤 Run 1: seller watchlist</h2>
+<p>The seller URL came from a real <code>SEARCH</code> output:</p>
+<pre><code>{
+  &quot;mode&quot;: &quot;SELLER_PROFILE&quot;,
+  &quot;sellerUrls&quot;: [
+    &quot;https://www.vinted.fr/member/3146082883-adwatches&quot;
+  ],
+  &quot;maxItems&quot;: 1,
+  &quot;includePhotos&quot;: false,
+  &quot;maxConcurrency&quot;: 1,
+  &quot;requestDelayMs&quot;: 500
+}</code></pre>
+<p>Live result:</p>
+<ul>
+<li><strong>Run ID</strong> — <span><strong>Value:</strong> <code>qJbKKIoxK0XiPifIO</code></span></li>
+<li><strong>Dataset ID</strong> — <span><strong>Value:</strong> <code>C9v2k3RMb6C3nP3yQ</code></span></li>
+<li><strong>Status</strong> — <span><strong>Value:</strong> <code>SUCCEEDED</code></span></li>
+<li><strong>Duration</strong> — <span><strong>Value:</strong> <code>41s</code></span></li>
+<li><strong>Rows emitted</strong> — <span><strong>Value:</strong> <code>1</code></span></li>
+<li><strong>Free-tier estimated charge</strong> — <span><strong>Value:</strong> <code>$0.022</code></span></li>
+</ul>
+<p>Output:</p>
+<pre><code>{
+  &quot;id&quot;: 3146082883,
+  &quot;username&quot;: &quot;adwatches&quot;,
+  &quot;profileUrl&quot;: &quot;https://www.vinted.fr/member/3146082883-adwatches&quot;,
+  &quot;rating&quot;: 1,
+  &quot;ratingCount&quot;: 11,
+  &quot;itemCount&quot;: 1,
+  &quot;soldItemCount&quot;: 14,
+  &quot;followerCount&quot;: 3,
+  &quot;country&quot;: &quot;fr&quot;,
+  &quot;lastSeenAt&quot;: &quot;2026-06-04T22:11:32+02:00&quot;,
+  &quot;verifications&quot;: {
+    &quot;email&quot;: true,
+    &quot;phone&quot;: false,
+    &quot;facebook&quot;: false,
+    &quot;google&quot;: true
+  }
+}</code></pre>
+<h2>🔍 What this profile tells me</h2>
+<p>This row is not an &quot;opportunity&quot; by itself. It is a filter.</p>
+<ul>
+<li><strong><code>rating</code></strong> — <span><strong>Live value:</strong> <code>1</code></span> | <span><strong>How I use it:</strong> Weak trust signal, inspect manually</span></li>
+<li><strong><code>ratingCount</code></strong> — <span><strong>Live value:</strong> <code>11</code></span> | <span><strong>How I use it:</strong> Enough history to avoid treating it as brand new</span></li>
+<li><strong><code>itemCount</code></strong> — <span><strong>Live value:</strong> <code>1</code></span> | <span><strong>How I use it:</strong> Not currently a large active inventory</span></li>
+<li><strong><code>soldItemCount</code></strong> — <span><strong>Live value:</strong> <code>14</code></span> | <span><strong>How I use it:</strong> Some past sales activity</span></li>
+<li><strong><code>followerCount</code></strong> — <span><strong>Live value:</strong> <code>3</code></span> | <span><strong>How I use it:</strong> Not a high-demand seller profile</span></li>
+<li><strong><code>phone</code> verified</strong> — <span><strong>Live value:</strong> <code>false</code></span> | <span><strong>How I use it:</strong> Not a blocker, but useful context</span></li>
+<li><strong><code>google</code> verified</strong> — <span><strong>Live value:</strong> <code>true</code></span> | <span><strong>How I use it:</strong> Basic identity signal</span></li>
+</ul>
+<p>For this seller, I would not build a high-frequency monitor. I might still watch exact item URLs if the listing itself looks underpriced. That is the point: profile data helps decide where not to spend monitoring budget.</p>
+<h2>✅ When seller monitoring helps</h2>
+<ul>
+<li><strong>Does this seller keep listing relevant inventory?</strong> — <span><strong>Mode:</strong> <code>SELLER_PROFILE</code></span></li>
+<li><strong>Did their shop count change?</strong> — <span><strong>Mode:</strong> <code>SELLER_PROFILE</code></span></li>
+<li><strong>Did watched items disappear?</strong> — <span><strong>Mode:</strong> <code>SELL_THROUGH_TRACKER</code> with item URLs</span></li>
+<li><strong>Did an exact listing price drop?</strong> — <span><strong>Mode:</strong> <code>PRICE_TRACK</code></span></li>
+</ul>
+<p>I would not schedule seller profile checks every 5 minutes. Daily is usually enough unless you are monitoring a very specific seller.</p>
+<h2>📅 Seller watchlist templates</h2>
+<p>Small daily seller check:</p>
+<pre><code>{
+  &quot;mode&quot;: &quot;SELLER_PROFILE&quot;,
+  &quot;sellerUrls&quot;: [
+    &quot;https://www.vinted.fr/member/3146082883-adwatches&quot;
+  ],
+  &quot;maxItems&quot;: 1,
+  &quot;includePhotos&quot;: false,
+  &quot;maxConcurrency&quot;: 1,
+  &quot;requestDelayMs&quot;: 500
+}</code></pre>
+<p>Seller shortlist after a search run:</p>
+<pre><code>{
+  &quot;mode&quot;: &quot;SELLER_PROFILE&quot;,
+  &quot;sellerUrls&quot;: [
+    &quot;https://www.vinted.fr/member/3146082883-adwatches&quot;,
+    &quot;https://www.vinted.fr/member/123456-example&quot;
+  ],
+  &quot;maxItems&quot;: 10,
+  &quot;includePhotos&quot;: false
+}</code></pre>
+<p>What I would send to Telegram:</p>
+<pre><code>Seller adwatches: 1 active item, 14 sold items, rating 1/5 from 11 reviews, last seen 2026-06-04.</code></pre>
+<p>That is enough for a reseller to decide whether to click.</p>
+<h2>💸 Run 2: exact listing price tracking</h2>
+<p>For <code>PRICE_TRACK</code>, I used two real item URLs from the search run:</p>
+<pre><code>{
+  &quot;mode&quot;: &quot;PRICE_TRACK&quot;,
+  &quot;itemUrls&quot;: [
+    &quot;https://www.vinted.fr/items/9089776821-nike-air-force-1-shadow-unisex-numero-45&quot;,
+    &quot;https://www.vinted.fr/items/9089774198-nike-air-pegasus-volt-green-neon-eur42-hq5403-700&quot;
+  ],
+  &quot;trackingStoreName&quot;: &quot;devto-series-price-track-2026-06-04&quot;,
+  &quot;maxConcurrency&quot;: 1,
+  &quot;requestDelayMs&quot;: 500
+}</code></pre>
+<p>Live result:</p>
+<ul>
+<li><strong>Run ID</strong> — <span><strong>Value:</strong> <code>nWdbpqX2JKdZLs1ad</code></span></li>
+<li><strong>Dataset ID</strong> — <span><strong>Value:</strong> <code>TkFl0ztR6QMXa65MM</code></span></li>
+<li><strong>Status</strong> — <span><strong>Value:</strong> <code>SUCCEEDED</code></span></li>
+<li><strong>Duration</strong> — <span><strong>Value:</strong> <code>359s</code></span></li>
+<li><strong>Rows emitted</strong> — <span><strong>Value:</strong> <code>2</code></span></li>
+<li><strong>Free-tier estimated charge</strong> — <span><strong>Value:</strong> <code>$0.024</code></span></li>
+</ul>
+<p>This run was slow because Vinted returned several 403s. That is the interesting part. From the run log:</p>
+<pre><code>Browser price fallback failed for item 9089776821: timed out after 30000ms
+Price unavailable for item 9089776821; history not updated
+Resolved item 9089774198 price through browser fallback
+Price tracked for item 9089774198: 39.99 EUR (0% drop)</code></pre>
+<p>This is exactly the kind of boring log I want in a scraper. Not because timeouts are good. Because the Actor did not corrupt the price history when extraction failed.</p>
+<h2>🛡️ The important fallback</h2>
+<p>For the first item, price extraction failed. The Actor returned:</p>
+<pre><code>{
+  &quot;itemId&quot;: 9089776821,
+  &quot;currentPrice&quot;: null,
+  &quot;currency&quot;: &quot;EUR&quot;,
+  &quot;priceHistory&quot;: [],
+  &quot;priceDropPct&quot;: 0,
+  &quot;priceUnavailable&quot;: true,
+  &quot;warning&quot;: &quot;Current price could not be extracted; price history was not updated.&quot;
+}</code></pre>
+<p>That is the right failure mode.</p>
+<ul>
+<li><strong>Price blocked once</strong> — <span><strong>Bad behavior:</strong> ❌ Write <code>0</code> into history</span> | <span><strong>Safer behavior:</strong> ✅ Mark <code>priceUnavailable</code></span></li>
+<li><strong>Browser fallback times out</strong> — <span><strong>Bad behavior:</strong> ❌ Delete previous history</span> | <span><strong>Safer behavior:</strong> ✅ Keep history clean</span></li>
+<li><strong>API returns 403</strong> — <span><strong>Bad behavior:</strong> ❌ Crash whole watchlist</span> | <span><strong>Safer behavior:</strong> ✅ Continue to next item</span></li>
+</ul>
+<p>For the second item, the browser fallback worked:</p>
+<pre><code>{
+  &quot;itemId&quot;: 9089774198,
+  &quot;currentPrice&quot;: 39.99,
+  &quot;currency&quot;: &quot;EUR&quot;,
+  &quot;priceHistory&quot;: [
+    {
+      &quot;price&quot;: 39.99,
+      &quot;date&quot;: &quot;2026-06-04T20:27:02.852Z&quot;
+    }
+  ],
+  &quot;priceDropPct&quot;: 0
+}</code></pre>
+<p>The log confirmed it:</p>
+<pre><code>Resolved item 9089774198 price through browser fallback
+Price tracked for item 9089774198: 39.99 EUR (0% drop)</code></pre>
+<h2>📊 Two rows, two different meanings</h2>
+<p>Both rows came from the same run, but they should trigger different actions:</p>
+<ul>
+<li><strong><code>9089776821</code></strong> — <span><strong>Result:</strong> <code>priceUnavailable: true</code></span> | <span><strong>Action:</strong> Keep previous history, retry later</span></li>
+<li><strong><code>9089774198</code></strong> — <span><strong>Result:</strong> <code>currentPrice: 39.99</code></span> | <span><strong>Action:</strong> Store history point, compute future drops</span></li>
+</ul>
+<p>This distinction is important for alerts. If a scraper treats &quot;blocked once&quot; as &quot;price is zero&quot;, every downstream alert becomes garbage. For a real watchlist, I want this rule:</p>
+<pre><code>No extracted price = no price-history mutation</code></pre>
+<p>That is less exciting than a fake discount alert, but it is much safer.</p>
+<h2>🧾 Persistent price tracking contract</h2>
+<p>The <code>trackingStoreName</code> is the anchor:</p>
+<pre><code>{
+  &quot;trackingStoreName&quot;: &quot;devto-series-price-track-2026-06-04&quot;
+}</code></pre>
+<p>Use one stable store name per watchlist.</p>
+<ul>
+<li><strong><code>daily-af1-watchlist-fr</code></strong> — <span><strong>Good?:</strong> ✅</span> | <span><strong>Why:</strong> Stable and specific</span></li>
+<li><strong><code>seller-adwatches-watchlist</code></strong> — <span><strong>Good?:</strong> ✅</span> | <span><strong>Why:</strong> Seller-scoped</span></li>
+<li><strong><code>test</code></strong> — <span><strong>Good?:</strong> ❌</span> | <span><strong>Why:</strong> Easy to reuse by accident</span></li>
+<li><strong><code>price-track</code></strong> — <span><strong>Good?:</strong> ❌</span> | <span><strong>Why:</strong> Too broad</span></li>
+<li><strong>New random name every run</strong> — <span><strong>Good?:</strong> ❌</span> | <span><strong>Why:</strong> No persistent history</span></li>
+</ul>
+<p>The store name is what turns a run into a history. Without it, you are just re-scraping the current price.</p>
+<h2>🔔 Webhook shape</h2>
+<p>For scheduled alerts, I would not send the full dataset every time. I would send a compact payload like:</p>
+<pre><code>{
+  &quot;workflow&quot;: &quot;vinted-price-watchlist&quot;,
+  &quot;itemId&quot;: 9089774198,
+  &quot;currentPrice&quot;: 39.99,
+  &quot;priceDropPct&quot;: 0,
+  &quot;priceUnavailable&quot;: false,
+  &quot;runId&quot;: &quot;nWdbpqX2JKdZLs1ad&quot;
+}</code></pre>
+<p>Or for unavailable prices:</p>
+<pre><code>{
+  &quot;workflow&quot;: &quot;vinted-price-watchlist&quot;,
+  &quot;itemId&quot;: 9089776821,
+  &quot;priceUnavailable&quot;: true,
+  &quot;action&quot;: &quot;do_not_update_history&quot;
+}</code></pre>
+<p>For Telegram, I would keep it even shorter:</p>
+<pre><code>Vinted price watch: 9089774198 still at 39.99 EUR. No drop yet.</code></pre>
+<p>And for a failed extraction:</p>
+<pre><code>Vinted price watch: 9089776821 price unavailable. History not changed.</code></pre>
+<p>The second message is not glamorous, but it prevents bad decisions.</p>
+<h2>💸 Cost and scheduling guardrails</h2>
+<p>The live <code>PRICE_TRACK</code> run emitted <code>2</code> rows. At the Free pricing available when I ran it:</p>
+<pre><code>$0.020 / Actor start
+$0.002 / result row</code></pre>
+<p>The estimated charge was:</p>
+<pre><code>$0.020 + (2 * $0.002) = $0.024</code></pre>
+<p>The bigger risk is time, not just row cost. This run took <code>359s</code> because of fallback behavior. So I would not schedule a huge exact-URL watchlist every few minutes.</p>
+<ul>
+<li><strong>1-5 exact URLs</strong> — <span><strong>Cadence I would start with:</strong> Every few hours</span> | <span><strong>Why:</strong> Acceptable if items are high-value</span></li>
+<li><strong>5-20 exact URLs</strong> — <span><strong>Cadence I would start with:</strong> Daily</span> | <span><strong>Why:</strong> Better balance</span></li>
+<li><strong>20-100 URLs</strong> — <span><strong>Cadence I would start with:</strong> Daily/weekly split</span> | <span><strong>Why:</strong> Avoid one slow run blocking everything</span></li>
+<li><strong>Broad discovery</strong> — <span><strong>Cadence I would start with:</strong> Use <code>SELL_THROUGH_TRACKER</code> instead</span> | <span><strong>Why:</strong> Exact URLs are the wrong tool</span></li>
+</ul>
+<h2>✅ Alert rules I would trust</h2>
+<p>For price tracking:</p>
+<ul>
+<li><strong><code>priceDropPct &gt; 10</code></strong> — <span><strong>Alert?:</strong> ✅</span></li>
+<li><strong><code>priceUnavailable: true</code> once</strong> — <span><strong>Alert?:</strong> ❌</span></li>
+<li><strong><code>priceUnavailable: true</code> multiple times</strong> — <span><strong>Alert?:</strong> Maybe, as a health warning</span></li>
+<li><strong>New price history point, no drop</strong> — <span><strong>Alert?:</strong> ❌</span></li>
+<li><strong>Exact watched item disappears</strong> — <span><strong>Alert?:</strong> Use sell-through/missing logic</span></li>
+</ul>
+<p>For seller watchlists:</p>
+<ul>
+<li><strong>Active item count jumps</strong> — <span><strong>Alert?:</strong> ✅</span></li>
+<li><strong>Seller appears in a profitable query repeatedly</strong> — <span><strong>Alert?:</strong> ✅</span></li>
+<li><strong>Rating count changes</strong> — <span><strong>Alert?:</strong> Maybe</span></li>
+<li><strong>Last seen changes</strong> — <span><strong>Alert?:</strong> Usually no</span></li>
+</ul>
+<p>The goal is not more alerts. The goal is fewer, better alerts.</p>
+<h2>✅ What I would schedule</h2>
+<ul>
+<li><strong>Seller profile</strong> — <span><strong>Schedule:</strong> Daily</span> | <span><strong>Why:</strong> Slow enough, useful for seller watchlists</span></li>
+<li><strong>Price track 5-20 exact URLs</strong> — <span><strong>Schedule:</strong> Daily</span> | <span><strong>Why:</strong> Good for item-specific monitoring</span></li>
+<li><strong>Sell-through query</strong> — <span><strong>Schedule:</strong> Daily or every few hours</span> | <span><strong>Why:</strong> Best market movement signal</span></li>
+<li><strong>Sold explicit pages</strong> — <span><strong>Schedule:</strong> Only when needed</span> | <span><strong>Why:</strong> Can return zero by design</span></li>
+</ul>
+<h2>🚀 Try it</h2>
+<p>Run the Actor here:</p>
+<p>https://apify.com/kazkn/vinted-smart-scraper?fpr=8fp2od For price tracking, the rule is:</p>
+<pre><code>one watchlist = one stable trackingStoreName</code></pre>
+<p>Do not reuse the same store for unrelated item groups unless you intentionally want those histories together.</p>
+<h2>Read the full series</h2>
+<ul>
+<li><a href="https://dev.to/datakaz/i-built-a-vinted-monitor-that-tracks-what-disappears-not-just-what-exists-4862">Part 1: Sell-through monitor</a></li>
+<li><a href="https://dev.to/datakaz/cross-country-vinted-search-comparing-5-markets-without-burning-sessions-h3b">Part 2: Cross-country Vinted search</a></li>
+<li><a href="https://dev.to/datakaz/seller-watchlists-price-drops-and-webhooks-the-vinted-signals-i-actually-schedule-1nag">Part 3: Seller watchlists and webhooks</a></li>
+<li><a href="https://dev.to/datakaz/best-vinted-scraper-in-2026-an-honest-developer-comparison-5921">Part 4: Honest scraper comparison</a></li>
+</ul>
+<p><em>Originally published at <a href="https://dev.to/datakaz/seller-watchlists-price-drops-and-webhooks-the-vinted-signals-i-actually-schedule-1nag">DEV.to</a>.</em></p>
+</article>
+</body>
+</html>

@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Best Vinted Scraper in 2026: An Honest Developer Comparison</title>
+<meta name="description" content="A developer-first comparison of Vinted scraping approaches: one-time exports, browser scrapers, API-style catalog runs, scheduled monitors, and cost tradeoffs.">
+<link rel="canonical" href="https://dev.to/datakaz/best-vinted-scraper-in-2026-an-honest-developer-comparison-5921">
+<meta property="og:title" content="Best Vinted Scraper in 2026: An Honest Developer Comparison">
+<meta property="og:description" content="A developer-first comparison of Vinted scraping approaches: one-time exports, browser scrapers, API-style catalog runs, scheduled monitors, and cost tradeoffs.">
+<meta property="og:image" content="https://raw.githubusercontent.com/DataKazKN/vinted-smart-devto-assets/main/cover-04-honest-comparison-1200x630.png">
+</head>
+<body>
+<article>
+<h1>Best Vinted Scraper in 2026: An Honest Developer Comparison</h1>
+<figure><img src="https://raw.githubusercontent.com/DataKazKN/vinted-smart-devto-assets/main/cover-04-honest-comparison-1200x630.png" alt="Best Vinted Scraper in 2026: An Honest Developer Comparison (4/4)"></figure>
+<p><em>Part 4/4 of a developer series about turning Vinted scraping into scheduled reseller monitoring.</em></p>
+<p>Disclosure: I built Vinted Smart Scraper on Apify. Some Apify links may use my referral code.</p>
+<p>I do not think &quot;best Vinted scraper&quot; is a useful question by itself. The useful question is:</p>
+<blockquote><p>Best for which workflow?</p></blockquote>
+<p>A one-time CSV export, a seller watchlist, a price-drop monitor, and a sell-through tracker are different products.</p>
+<p>This is the comparison I wish I had written before building <a href="https://apify.com/kazkn/vinted-smart-scraper?fpr=8fp2od">Vinted Smart Scraper</a>.</p>
+<h2>🧨 What most comparisons get wrong</h2>
+<p>A lot of scraper comparisons only test this:</p>
+<pre><code>Can it return rows today?</code></pre>
+<p>That is not enough. For a reseller workflow, I care about:</p>
+<ul>
+<li><strong>Can it run on a schedule?</strong> — <span><strong>Why it matters:</strong> Manual scraping does not compound</span></li>
+<li><strong>Can it keep state?</strong> — <span><strong>Why it matters:</strong> Price history and sell-through need memory</span></li>
+<li><strong>Does it fail cleanly?</strong> — <span><strong>Why it matters:</strong> Bad rows can poison alerts</span></li>
+<li><strong>Can I cap cost?</strong> — <span><strong>Why it matters:</strong> Scheduled jobs can quietly become expensive</span></li>
+<li><strong>Does it handle countries?</strong> — <span><strong>Why it matters:</strong> Vinted is not one uniform marketplace</span></li>
+<li><strong>Does the output help decisions?</strong> — <span><strong>Why it matters:</strong> Rows are not the same as signals</span></li>
+</ul>
+<p>The best tool is not the one with the biggest export button. It is the one that lets a user wake up, check signals, and decide what to buy, ignore, or monitor next.</p>
+<h2>🧭 The comparison matrix</h2>
+<ul>
+<li><strong>Manual Vinted search</strong> — <span><strong>Good at:</strong> Quick checks</span> | <span><strong>Weak at:</strong> No history, no automation</span></li>
+<li><strong>One-time scraper</strong> — <span><strong>Good at:</strong> CSV exports</span> | <span><strong>Weak at:</strong> No recurring signal</span></li>
+<li><strong>Browser-only scraper</strong> — <span><strong>Good at:</strong> Complex pages</span> | <span><strong>Weak at:</strong> Slow, session-heavy</span></li>
+<li><strong>Catalog/API-style scraper</strong> — <span><strong>Good at:</strong> Fast listing snapshots</span> | <span><strong>Weak at:</strong> Needs fallback strategy</span></li>
+<li><strong>Scheduled monitor</strong> — <span><strong>Good at:</strong> Recurring decisions</span> | <span><strong>Weak at:</strong> Requires state and cost guardrails</span></li>
+</ul>
+<p>Here is the stricter version:</p>
+<ul>
+<li><strong>Manual Vinted search</strong> — <span><strong>Setup:</strong> ✅ Easy</span> | <span><strong>26 markets:</strong> ✅ Native</span> | <span><strong>Scheduling:</strong> ❌ None</span> | <span><strong>State:</strong> ❌ None</span> | <span><strong>Failure behavior:</strong> Human judgment</span> | <span><strong>Best user:</strong> Casual buyer</span></li>
+<li><strong>One-time scraper</strong> — <span><strong>Setup:</strong> ✅ Easy</span> | <span><strong>26 markets:</strong> Maybe</span> | <span><strong>Scheduling:</strong> ❌ Weak</span> | <span><strong>State:</strong> ❌ None</span> | <span><strong>Failure behavior:</strong> Often hidden</span> | <span><strong>Best user:</strong> CSV user</span></li>
+<li><strong>Browser-only scraper</strong> — <span><strong>Setup:</strong> Medium</span> | <span><strong>26 markets:</strong> Maybe</span> | <span><strong>Scheduling:</strong> ⚠️ Slow</span> | <span><strong>State:</strong> Maybe</span> | <span><strong>Failure behavior:</strong> Timeout-heavy</span> | <span><strong>Best user:</strong> Technical user</span></li>
+<li><strong>Generic marketplace scraper</strong> — <span><strong>Setup:</strong> Medium</span> | <span><strong>26 markets:</strong> ❌ Not Vinted-specific</span> | <span><strong>Scheduling:</strong> Maybe</span> | <span><strong>State:</strong> ❌ Usually none</span> | <span><strong>Failure behavior:</strong> Varies</span> | <span><strong>Best user:</strong> Data collector</span></li>
+<li><strong>Scheduled Vinted monitor</strong> — <span><strong>Setup:</strong> Medium</span> | <span><strong>26 markets:</strong> ✅ Needed</span> | <span><strong>Scheduling:</strong> ✅ Core feature</span> | <span><strong>State:</strong> ✅ Required</span> | <span><strong>Failure behavior:</strong> Must be explicit</span> | <span><strong>Best user:</strong> Reseller/operator</span></li>
+</ul>
+<p>If the goal is daily reseller intelligence, the last row matters more than the prettiest one-time export.</p>
+<h2>✅ What a serious Vinted scraper needs</h2>
+<ul>
+<li><strong>26-market support</strong> — <span><strong>Why:</strong> Vinted is fragmented by country</span></li>
+<li><strong>Country cap</strong> — <span><strong>Why:</strong> Prevent runaway multi-country jobs</span></li>
+<li><strong><code>maxItems</code> cap</strong> — <span><strong>Why:</strong> Prevent surprise bills</span></li>
+<li><strong>Persistent state</strong> — <span><strong>Why:</strong> Required for price history and sell-through</span></li>
+<li><strong>Summary rows</strong> — <span><strong>Why:</strong> Needed for webhook/Telegram/CSV workflows</span></li>
+<li><strong>Strict sold filtering</strong> — <span><strong>Why:</strong> Avoid false sold rows</span></li>
+<li><strong>Clean failure rows</strong> — <span><strong>Why:</strong> Do not corrupt history with bad data</span></li>
+</ul>
+<h2>🧪 Live data from my test batch</h2>
+<p>On <strong>June 4, 2026</strong>, I ran seven small cloud tests.</p>
+<ul>
+<li><strong><code>SEARCH</code></strong> — <span><strong>Run ID:</strong> <code>7BHS0mBNeN4faoDZk</code></span> | <span><strong>Status:</strong> <code>SUCCEEDED</code></span> | <span><strong>Rows:</strong> 8</span> | <span><strong>Duration:</strong> 10s</span> | <span><strong>Free-tier estimated charge:</strong> <code>$0.036</code></span></li>
+<li><strong><code>CROSS_COUNTRY</code></strong> — <span><strong>Run ID:</strong> <code>55PiTkUKZneTJo8Ep</code></span> | <span><strong>Status:</strong> <code>SUCCEEDED</code></span> | <span><strong>Rows:</strong> 1</span> | <span><strong>Duration:</strong> 86s</span> | <span><strong>Free-tier estimated charge:</strong> <code>$0.022</code></span></li>
+<li><strong><code>SELL_THROUGH_TRACKER</code> baseline</strong> — <span><strong>Run ID:</strong> <code>gCd8a3kk4AC9yJWpI</code></span> | <span><strong>Status:</strong> <code>SUCCEEDED</code></span> | <span><strong>Rows:</strong> 9</span> | <span><strong>Duration:</strong> 6s</span> | <span><strong>Free-tier estimated charge:</strong> <code>$0.038</code></span></li>
+<li><strong><code>SELL_THROUGH_TRACKER</code> second pass</strong> — <span><strong>Run ID:</strong> <code>sbCksMapWGd5GBG9O</code></span> | <span><strong>Status:</strong> <code>SUCCEEDED</code></span> | <span><strong>Rows:</strong> 2</span> | <span><strong>Duration:</strong> 5s</span> | <span><strong>Free-tier estimated charge:</strong> <code>$0.024</code></span></li>
+<li><strong><code>SOLD_ITEMS</code></strong> — <span><strong>Run ID:</strong> <code>wvFbmO0HscQits0UV</code></span> | <span><strong>Status:</strong> <code>SUCCEEDED</code></span> | <span><strong>Rows:</strong> 0</span> | <span><strong>Duration:</strong> 18s</span> | <span><strong>Free-tier estimated charge:</strong> <code>$0.020</code></span></li>
+<li><strong><code>SELLER_PROFILE</code></strong> — <span><strong>Run ID:</strong> <code>qJbKKIoxK0XiPifIO</code></span> | <span><strong>Status:</strong> <code>SUCCEEDED</code></span> | <span><strong>Rows:</strong> 1</span> | <span><strong>Duration:</strong> 41s</span> | <span><strong>Free-tier estimated charge:</strong> <code>$0.022</code></span></li>
+<li><strong><code>PRICE_TRACK</code></strong> — <span><strong>Run ID:</strong> <code>nWdbpqX2JKdZLs1ad</code></span> | <span><strong>Status:</strong> <code>SUCCEEDED</code></span> | <span><strong>Rows:</strong> 2</span> | <span><strong>Duration:</strong> 359s</span> | <span><strong>Free-tier estimated charge:</strong> <code>$0.024</code></span></li>
+</ul>
+<p>Total batch:</p>
+<pre><code>23 emitted rows
+7 Actor starts
+estimated Free-tier charge: $0.186</code></pre>
+<p>The price-track run is the outlier. It hit several 403s, then browser fallback recovered one of two items. That is why &quot;works once&quot; is not enough. You need to inspect failure behavior.</p>
+<h2>🧪 What each test proved</h2>
+<ul>
+<li><strong><code>SEARCH</code></strong> — <span><strong>What it proved:</strong> Can return fresh listing rows fast</span> | <span><strong>What it did not prove:</strong> That those listings are worth buying</span></li>
+<li><strong><code>CROSS_COUNTRY</code></strong> — <span><strong>What it proved:</strong> Can emit a compact country comparison</span> | <span><strong>What it did not prove:</strong> That a spread is profit</span></li>
+<li><strong><code>SELL_THROUGH_TRACKER</code> baseline</strong> — <span><strong>What it proved:</strong> Can create a stateful watchlist</span> | <span><strong>What it did not prove:</strong> That items sold yet</span></li>
+<li><strong><code>SELL_THROUGH_TRACKER</code> second pass</strong> — <span><strong>What it proved:</strong> Can detect a missing item without overclaiming sold</span> | <span><strong>What it did not prove:</strong> That one missing run means sold</span></li>
+<li><strong><code>SOLD_ITEMS</code></strong> — <span><strong>What it proved:</strong> Can return zero instead of false positives</span> | <span><strong>What it did not prove:</strong> That sold visibility is always available</span></li>
+<li><strong><code>SELLER_PROFILE</code></strong> — <span><strong>What it proved:</strong> Can extract seller-level context</span> | <span><strong>What it did not prove:</strong> That the seller is worth monitoring</span></li>
+<li><strong><code>PRICE_TRACK</code></strong> — <span><strong>What it proved:</strong> Can preserve history under partial extraction failure</span> | <span><strong>What it did not prove:</strong> That every item URL resolves fast</span></li>
+</ul>
+<p>That is the kind of comparison I trust more than a &quot;top 10 tools&quot; list. The failure cases are part of the product.</p>
+<h2>❌ Red flags when comparing tools</h2>
+<ul>
+<li><strong>&quot;Real-time opportunities&quot;</strong> — <span><strong>Why I distrust it:</strong> Usually means polling. Ask about schedule cost.</span></li>
+<li><strong>&quot;Guaranteed arbitrage&quot;</strong> — <span><strong>Why I distrust it:</strong> Spread is not profit. Shipping, fees, condition, and demand matter.</span></li>
+<li><strong>&quot;Sold item scraping&quot;</strong> — <span><strong>Why I distrust it:</strong> Vinted often hides or changes sold visibility.</span></li>
+<li><strong>&quot;Unlimited countries&quot;</strong> — <span><strong>Why I distrust it:</strong> Usually means unstable or expensive runs.</span></li>
+<li><strong>&quot;No blockers&quot;</strong> — <span><strong>Why I distrust it:</strong> Datadome/Cloudflare behavior changes.</span></li>
+</ul>
+<h2>✅ What I trust more</h2>
+<p>I trust boring outputs like this:</p>
+<pre><code>{
+  &quot;priceUnavailable&quot;: true,
+  &quot;warning&quot;: &quot;Current price could not be extracted; price history was not updated.&quot;
+}</code></pre>
+<p>And this:</p>
+<pre><code>{
+  &quot;trackingStatus&quot;: &quot;missing&quot;,
+  &quot;confidence&quot;: &quot;low&quot;,
+  &quot;missingRuns&quot;: 1,
+  &quot;missingRunsThreshold&quot;: 2
+}</code></pre>
+<p>Because they do not overclaim.</p>
+<h2>🧭 Decision tree</h2>
+<p>If I were choosing a Vinted scraper for a reseller, I would start with the workflow:</p>
+<pre><code>Do you need one export or recurring signals?</code></pre>
+<p>Then:</p>
+<ul>
+<li><strong>One manual lookup</strong> — <span><strong>Use:</strong> Vinted website</span></li>
+<li><strong>One CSV export</strong> — <span><strong>Use:</strong> <code>SEARCH</code></span></li>
+<li><strong>Monitor a keyword every day</strong> — <span><strong>Use:</strong> <code>SELL_THROUGH_TRACKER</code></span></li>
+<li><strong>Watch one seller</strong> — <span><strong>Use:</strong> <code>SELLER_PROFILE</code></span></li>
+<li><strong>Watch exact listing prices</strong> — <span><strong>Use:</strong> <code>PRICE_TRACK</code></span></li>
+<li><strong>Compare countries</strong> — <span><strong>Use:</strong> <code>CROSS_COUNTRY</code></span></li>
+<li><strong>Prove sold state from explicit sold pages</strong> — <span><strong>Use:</strong> <code>SOLD_ITEMS</code>, with caution</span></li>
+</ul>
+<p>The wrong decision is trying to make one mode answer every question. Example:</p>
+<pre><code>PRICE_TRACK is great for exact URLs.
+PRICE_TRACK is bad for discovering new inventory.</code></pre>
+<p>And:</p>
+<pre><code>CROSS_COUNTRY is great for market direction.
+CROSS_COUNTRY is not a profit calculator.</code></pre>
+<h2>🧰 Inputs I would test before trusting any tool</h2>
+<p>I would run a small test batch before scheduling anything:</p>
+<pre><code>{
+  &quot;mode&quot;: &quot;SEARCH&quot;,
+  &quot;query&quot;: &quot;nike air force 1&quot;,
+  &quot;countries&quot;: [&quot;fr&quot;],
+  &quot;maxItems&quot;: 10,
+  &quot;includePhotos&quot;: false
+}</code></pre>
+<p>Then:</p>
+<pre><code>{
+  &quot;mode&quot;: &quot;SELL_THROUGH_TRACKER&quot;,
+  &quot;query&quot;: &quot;nike air force 1&quot;,
+  &quot;countries&quot;: [&quot;fr&quot;],
+  &quot;maxItems&quot;: 100,
+  &quot;trackingStoreName&quot;: &quot;daily-af1-fr&quot;,
+  &quot;trackerId&quot;: &quot;daily-af1-fr&quot;,
+  &quot;emitRunSummary&quot;: true
+}</code></pre>
+<p>Then:</p>
+<pre><code>{
+  &quot;mode&quot;: &quot;PRICE_TRACK&quot;,
+  &quot;itemUrls&quot;: [
+    &quot;https://www.vinted.fr/items/9089774198-nike-air-pegasus-volt-green-neon-eur42-hq5403-700&quot;
+  ],
+  &quot;trackingStoreName&quot;: &quot;price-af1-shortlist&quot;
+}</code></pre>
+<p>If a tool cannot explain what each row means after those three tests, I would not schedule it.</p>
+<h2>💸 Cost guardrails</h2>
+<p>At the time of writing, Free-tier pricing was:</p>
+<pre><code>$0.020 / Actor start
+$0.002 / result row</code></pre>
+<p>That means:</p>
+<ul>
+<li><strong>10</strong> — <span><strong>Estimated charge:</strong> <code>$0.040</code></span></li>
+<li><strong>100</strong> — <span><strong>Estimated charge:</strong> <code>$0.220</code></span></li>
+<li><strong>300</strong> — <span><strong>Estimated charge:</strong> <code>$0.620</code></span></li>
+<li><strong>300 daily for 30 days</strong> — <span><strong>Estimated charge:</strong> <code>$18.60</code></span></li>
+</ul>
+<p>The trap is not one run. The trap is scheduling a noisy monitor and forgetting it. The other trap is misunderstanding &quot;items inspected&quot; versus &quot;rows emitted&quot;. Example from the live tests:</p>
+<ul>
+<li><strong><code>CROSS_COUNTRY</code></strong> — <span><strong>Internal idea:</strong> 5 countries x 3 listings</span> | <span><strong>Rows emitted:</strong> 1</span> | <span><strong>Estimated charge:</strong> <code>$0.022</code></span></li>
+<li><strong><code>SELL_THROUGH_TRACKER</code> baseline</strong> — <span><strong>Internal idea:</strong> 8 observed items + summary</span> | <span><strong>Rows emitted:</strong> 9</span> | <span><strong>Estimated charge:</strong> <code>$0.038</code></span></li>
+<li><strong><code>SELL_THROUGH_TRACKER</code> second pass</strong> — <span><strong>Internal idea:</strong> Active items suppressed, summary kept</span> | <span><strong>Rows emitted:</strong> 2</span> | <span><strong>Estimated charge:</strong> <code>$0.024</code></span></li>
+<li><strong><code>PRICE_TRACK</code></strong> — <span><strong>Internal idea:</strong> 2 exact URLs</span> | <span><strong>Rows emitted:</strong> 2</span> | <span><strong>Estimated charge:</strong> <code>$0.024</code></span></li>
+</ul>
+<p>For schedules, I would always set:</p>
+<pre><code>maxItems
+country list
+includePhotos
+emitActiveItems
+trackingStoreName</code></pre>
+<p>Those five settings decide whether the workflow stays controlled.</p>
+<h2>🧱 Where Vinted Smart is not perfect</h2>
+<p>I do not want to hide the rough edges.</p>
+<ul>
+<li><strong><code>PRICE_TRACK</code></strong> — <span><strong>Honest limitation:</strong> One live run took <code>359s</code> under 403/fallback pressure</span> | <span><strong>Safer behavior:</strong> It preserved history and marked unavailable price</span></li>
+<li><strong><code>SOLD_ITEMS</code></strong> — <span><strong>Honest limitation:</strong> The live test returned <code>0</code> rows</span> | <span><strong>Safer behavior:</strong> It avoided false sold rows</span></li>
+<li><strong><code>CROSS_COUNTRY</code></strong> — <span><strong>Honest limitation:</strong> Spread is based on small samples</span> | <span><strong>Safer behavior:</strong> Treat as radar, not profit</span></li>
+<li><strong>Seller profile</strong> — <span><strong>Honest limitation:</strong> A seller row does not prove opportunity</span> | <span><strong>Safer behavior:</strong> Use it as a filter</span></li>
+<li><strong>Scheduling</strong> — <span><strong>Honest limitation:</strong> Too many noisy schedules can cost money</span> | <span><strong>Safer behavior:</strong> Start small and cap rows</span></li>
+</ul>
+<p>I prefer an Actor that says:</p>
+<pre><code>I could not prove this.</code></pre>
+<p>over one that fills the dataset with confident-looking bad data.</p>
+<h2>✅ My scoring rubric</h2>
+<p>When comparing Vinted scraping tools, I would score like this:</p>
+<ul>
+<li><strong>Recurring workflow support</strong> — <span><strong>Weight:</strong> 5/5</span> | <span><strong>Why:</strong> Daily use is where value compounds</span></li>
+<li><strong>State persistence</strong> — <span><strong>Weight:</strong> 5/5</span> | <span><strong>Why:</strong> Required for price and sell-through history</span></li>
+<li><strong>Cost control</strong> — <span><strong>Weight:</strong> 5/5</span> | <span><strong>Why:</strong> Schedules can run unattended</span></li>
+<li><strong>Country handling</strong> — <span><strong>Weight:</strong> 4/5</span> | <span><strong>Why:</strong> Vinted markets differ</span></li>
+<li><strong>Clean failures</strong> — <span><strong>Weight:</strong> 4/5</span> | <span><strong>Why:</strong> Bad alerts are worse than no alerts</span></li>
+<li><strong>Raw export size</strong> — <span><strong>Weight:</strong> 2/5</span> | <span><strong>Why:</strong> Bigger CSV is not always better</span></li>
+<li><strong>Fancy UI</strong> — <span><strong>Weight:</strong> 1/5</span> | <span><strong>Why:</strong> Nice, but not the core value</span></li>
+</ul>
+<p>This is why I keep coming back to scheduled monitors instead of one-shot scrapers.</p>
+<h2>🏁 My recommendation</h2>
+<p>If you only need one manual lookup:</p>
+<pre><code>Use Vinted search.</code></pre>
+<p>If you need a one-time CSV:</p>
+<pre><code>Use SEARCH with maxItems capped.</code></pre>
+<p>If you need recurring reseller intelligence:</p>
+<pre><code>Start with SELL_THROUGH_TRACKER.</code></pre>
+<p>If you need exact listing alerts:</p>
+<pre><code>Use PRICE_TRACK on specific URLs.</code></pre>
+<p>If you need country spread:</p>
+<pre><code>Use CROSS_COUNTRY first, then schedule only the promising monitors.</code></pre>
+<h2>🚀 Try the actor</h2>
+<p>The Actor is here:</p>
+<p>https://apify.com/kazkn/vinted-smart-scraper?fpr=8fp2od Start small:</p>
+<pre><code>{
+  &quot;mode&quot;: &quot;SELL_THROUGH_TRACKER&quot;,
+  &quot;query&quot;: &quot;nike air force 1&quot;,
+  &quot;countries&quot;: [&quot;fr&quot;],
+  &quot;maxItems&quot;: 100,
+  &quot;trackingStoreName&quot;: &quot;daily-nike-air-force-fr&quot;,
+  &quot;trackerId&quot;: &quot;daily-nike-air-force-fr&quot;,
+  &quot;emitActiveItems&quot;: true,
+  &quot;emitRunSummary&quot;: true
+}</code></pre>
+<p>Run once. Inspect output. Then schedule it.</p>
+<h2>Read the full series</h2>
+<ul>
+<li><a href="https://dev.to/datakaz/i-built-a-vinted-monitor-that-tracks-what-disappears-not-just-what-exists-4862">Part 1: Sell-through monitor</a></li>
+<li><a href="https://dev.to/datakaz/cross-country-vinted-search-comparing-5-markets-without-burning-sessions-h3b">Part 2: Cross-country Vinted search</a></li>
+<li><a href="https://dev.to/datakaz/seller-watchlists-price-drops-and-webhooks-the-vinted-signals-i-actually-schedule-1nag">Part 3: Seller watchlists and webhooks</a></li>
+<li><a href="https://dev.to/datakaz/best-vinted-scraper-in-2026-an-honest-developer-comparison-5921">Part 4: Honest scraper comparison</a></li>
+</ul>
+<p><em>Originally published at <a href="https://dev.to/datakaz/best-vinted-scraper-in-2026-an-honest-developer-comparison-5921">DEV.to</a>.</em></p>
+</article>
+</body>
+</html>
